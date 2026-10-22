@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>⭐ Stardust | غبار ستاره‌ای</title>
+  <title>🔴 Crazy Ball | توپ دیوانه</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -17,33 +17,34 @@
         <span id="score">0</span>
       </div>
       <div class="hud-item">
-        <span class="label">رکورد</span>
-        <span id="highScore">0</span>
+        <span class="label">سرعت</span>
+        <span id="speed">1x</span>
       </div>
       <div class="hud-item">
-        <span class="label">مرحله</span>
-        <span id="level">1</span>
+        <span class="label">رکورد</span>
+        <span id="highScore">0</span>
       </div>
     </div>
 
     <!-- Start Screen -->
     <div id="startScreen" class="overlay">
-      <h1 class="title">⭐ STARDUST</h1>
-      <p class="subtitle">غبار ستاره‌ای</p>
+      <h1 class="title">🔴 CRAZY BALL</h1>
+      <p class="subtitle">توپ دیوانه</p>
       <p class="description">
-        با انگشتت ستاره رو هدایت کن، غبار کیهانی جمع کن<br/>
-        و از سیاهچاله‌ها فرار کن...
+        با لمس صفحه، توپ رو بپرون<br/>
+        از موانع رد شو و تا می‌تونی زنده بمون<br/>
+        <b>سرعت هر لحظه بیشتر می‌شه!</b>
       </p>
       <button id="startBtn" class="btn">شروع بازی</button>
     </div>
 
     <!-- Game Over Screen -->
     <div id="gameOverScreen" class="overlay hidden">
-      <h1 class="title gameover">💫 پایان سفر</h1>
+      <h1 class="title gameover">💥 بوم!</h1>
       <div class="stats">
-        <p>امتیاز نهایی: <span id="finalScore">0</span></p>
+        <p>امتیاز: <span id="finalScore">0</span></p>
         <p>رکورد: <span id="finalHighScore">0</span></p>
-        <p>مرحله: <span id="finalLevel">1</span></p>
+        <p>سرعت نهایی: <span id="finalSpeed">1x</span></p>
       </div>
       <button id="restartBtn" class="btn">دوباره تلاش کن</button>
     </div>
