@@ -1,22 +1,19 @@
-# ⭐ Stardust — غبار ستاره‌ای
+# 🔴 Crazy Ball — توپ دیوانه
 
-یک بازی فضایی نئونی با گرافیک بالا که با HTML5 Canvas ساخته شده.
+یک بازی endless runner نئونی با گرافیک بالا و گیم‌پلی اعتیادآور.
 
 ## 🎮 نحوه بازی
-- با موس یا انگشت، ستاره رو هدایت کن
-- غبار کیهانی (ذرات رنگی) رو جمع کن
-- از سیاهچاله‌ها فرار کن!
-- هر ۱۵ ثانیه، مرحله سخت‌تر می‌شه
+- **لمس / کلیک / Space** → پرش توپ
+- از موانع (خارها و بلوک‌ها) بپر
+- ستاره‌های طلایی رو جمع کن (+۵۰ امتیاز)
+- هر لحظه سرعت بیشتر می‌شه — تا کی زنده می‌مونی؟
 
 ## 🚀 انتشار روی GitHub Pages
 
-### روش سریع:
-1. یک ریپازیتوری جدید در GitHub بساز (مثلاً `stardust`)
-2. فایل‌ها رو آپلود کن:
 ```bash
 git init
 git add .
-git commit -m "Initial commit"
+git commit -m "🔴 Crazy Ball initial commit"
 git branch -M main
-git remote add origin https://github.com/USERNAME/stardust.git
+git remote add origin https://github.com/USERNAME/crazy-ball.git
 git push -u origin main
