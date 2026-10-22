@@ -1,12 +1,12 @@
 // ==============================================
-// ⭐ STARDUST — بازی ستاره‌ای
-// گرافیک نئونی، ذرات، و مفهوم عمیق
+// 🔴 CRAZY BALL — توپ دیوانه
+// Endless Runner با گرافیک نئونی
 // ==============================================
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-let W, H;
+let W, H, GROUND_Y;
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
@@ -17,6 +17,7 @@ function resize() {
   canvas.style.width = W + 'px';
   canvas.style.height = H + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  GROUND_Y = H * 0.75;   // خط زمین در ۷۵٪ پایین صفحه
 }
 window.addEventListener('resize', resize);
 resize();
@@ -27,271 +28,344 @@ resize();
 const state = {
   running: false,
   score: 0,
-  highScore: parseInt(localStorage.getItem('stardust_high') || '0'),
-  level: 1,
+  highScore: parseInt(localStorage.getItem('crazyball_high') || '0'),
+  speed: 6,          // سرعت پایه
+  baseSpeed: 6,
+  maxSpeed: 22,
   time: 0,
+  distance: 0,
   shakeAmount: 0,
+  hueShift: 0,
 };
 
 document.getElementById('highScore').textContent = state.highScore;
 
 // ==============================================
-// ✨ Star (Player)
+// ⚪ Player (Ball)
 // ==============================================
-const player = {
-  x: W / 2,
-  y: H / 2,
-  targetX: W / 2,
-  targetY: H / 2,
-  radius: 12,
+const ball = {
+  x: 0,             // ثابت (نسبت به دوربین)
+  y: 0,
+  radius: 22,
+  vy: 0,
+  gravity: 0.9,
+  jumpPower: -18,
+  isGrounded: true,
+  rotation: 0,
   trail: [],
+  colorHue: 0,
 };
 
-// ==============================================
-// ✨ Particles (Dust)
-// ==============================================
-let dustParticles = [];
-let explosionParticles = [];
-let stars = [];      // background stars
-let blackHoles = [];
+// Ball fixed x position
+function resetBall() {
+  ball.x = W * 0.22;
+  ball.y = GROUND_Y - ball.radius;
+  ball.vy = 0;
+  ball.isGrounded = true;
+  ball.rotation = 0;
+  ball.trail = [];
+}
 
-// Initialize background stars
+// ==============================================
+// 🧱 Obstacles & Collectibles
+// ==============================================
+let obstacles = [];
+let coins = [];
+let particles = [];
+let stars = [];
+let groundSegments = [];
+let coinsCollected = 0;
+
+// Background stars
 function initStars() {
   stars = [];
-  for (let i = 0; i < 150; i++) {
+  for (let i = 0; i < 120; i++) {
     stars.push({
       x: Math.random() * W,
       y: Math.random() * H,
-      size: Math.random() * 1.5 + 0.3,
-      speed: Math.random() * 0.3 + 0.05,
+      size: Math.random() * 2 + 0.5,
+      speed: Math.random() * 2 + 0.5,
+      hue: Math.random() * 360,
       alpha: Math.random() * 0.7 + 0.3,
-      hue: Math.random() * 60 + 240, // blue-purple range
     });
   }
 }
 initStars();
 
 // ==============================================
-// 🖱️/👆 Input
+// 👆/🖱️ Input — Jump
 // ==============================================
-let touchActive = false;
-
-function handlePointer(x, y) {
+function jump() {
   if (!state.running) return;
-  player.targetX = x;
-  player.targetY = y;
-  touchActive = true;
+  if (ball.isGrounded) {
+    ball.vy = ball.jumpPower;
+    ball.isGrounded = false;
+    spawnJumpParticles();
+  }
 }
 
-canvas.addEventListener('mousemove', (e) => {
-  handlePointer(e.clientX, e.clientY);
-});
-
+canvas.addEventListener('mousedown', jump);
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
-  const t = e.touches[0];
-  handlePointer(t.clientX, t.clientY);
+  jump();
 }, { passive: false });
-
-canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  const t = e.touches[0];
-  handlePointer(t.clientX, t.clientY);
-}, { passive: false });
-
-canvas.addEventListener('touchend', () => {
-  touchActive = false;
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') {
+    e.preventDefault();
+    jump();
+  }
 });
 
 // ==============================================
-// 🎨 Spawn Functions
+// 💥 Particles
 // ==============================================
-function spawnDust() {
-  const edge = Math.floor(Math.random() * 4);
-  let x, y;
-  const margin = 50;
-  if (edge === 0) { x = Math.random() * W; y = -margin; }
-  else if (edge === 1) { x = W + margin; y = Math.random() * H; }
-  else if (edge === 2) { x = Math.random() * W; y = H + margin; }
-  else { x = -margin; y = Math.random() * H; }
-
-  const hue = Math.random() * 60 + 280;
-  dustParticles.push({
-    x, y,
-    vx: 0, vy: 0,
-    radius: Math.random() * 3 + 2,
-    hue,
-    pulse: Math.random() * Math.PI * 2,
-    life: 1,
-  });
-}
-
-function spawnBlackHole() {
-  const margin = 100;
-  let x, y;
-  if (Math.random() < 0.5) {
-    x = Math.random() < 0.5 ? margin : W - margin;
-    y = Math.random() * H;
-  } else {
-    x = Math.random() * W;
-    y = Math.random() < 0.5 ? margin : H - margin;
+function spawnJumpParticles() {
+  for (let i = 0; i < 12; i++) {
+    particles.push({
+      x: ball.x,
+      y: ball.y + ball.radius,
+      vx: (Math.random() - 0.5) * 8,
+      vy: Math.random() * -4 - 1,
+      life: 1,
+      hue: ball.colorHue,
+      size: Math.random() * 4 + 2,
+    });
   }
-  blackHoles.push({
-    x, y,
-    radius: 25,
-    rotation: 0,
-    pulse: Math.random() * Math.PI * 2,
-  });
 }
 
-function spawnExplosion(x, y, hue) {
-  for (let i = 0; i < 20; i++) {
+function spawnCoinBurst(x, y, hue) {
+  for (let i = 0; i < 18; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 5 + 2;
-    explosionParticles.push({
+    const speed = Math.random() * 6 + 2;
+    particles.push({
       x, y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       life: 1,
       hue,
-      size: Math.random() * 3 + 1,
+      size: Math.random() * 4 + 2,
+    });
+  }
+}
+
+function spawnExplosion(x, y) {
+  for (let i = 0; i < 40; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 10 + 3;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      hue: Math.random() * 360,
+      size: Math.random() * 5 + 2,
     });
   }
 }
 
 // ==============================================
+// 🧱 Obstacle Spawning
+// ==============================================
+let obstacleTimer = 0;
+let coinTimer = 0;
+
+function spawnObstacle() {
+  const difficulty = state.speed / state.baseSpeed;
+  const types = ['spike', 'block', 'tallSpike', 'doubleSpike'];
+  
+  // Choose type based on difficulty
+  let type = 'spike';
+  const r = Math.random();
+  if (difficulty > 1.3 && r < 0.25) type = 'block';
+  else if (difficulty > 1.8 && r < 0.5) type = 'tallSpike';
+  else if (difficulty > 2.2 && r < 0.7) type = 'doubleSpike';
+
+  const baseSize = 30 + Math.random() * 10;
+  let ob = {
+    x: W + 50,
+    type,
+    passed: false,
+  };
+
+  if (type === 'spike') {
+    ob.width = baseSize;
+    ob.height = baseSize;
+  } else if (type === 'tallSpike') {
+    ob.width = baseSize;
+    ob.height = baseSize * 1.8;
+  } else if (type === 'block') {
+    ob.width = baseSize * 1.2;
+    ob.height = baseSize * 1.2;
+  } else if (type === 'doubleSpike') {
+    ob.width = baseSize * 2.2;
+    ob.height = baseSize;
+  }
+
+  ob.y = GROUND_Y - ob.height;
+  ob.hue = Math.random() * 60 + 340; // pink/red range
+  obstacles.push(ob);
+}
+
+function spawnCoin() {
+  const minY = GROUND_Y - 220;
+  const maxY = GROUND_Y - 80;
+  const y = Math.random() * (maxY - minY) + minY;
+  coins.push({
+    x: W + 30,
+    y,
+    radius: 12,
+    pulse: Math.random() * Math.PI * 2,
+    collected: false,
+    hue: Math.random() * 60 + 40, // gold/yellow range
+  });
+}
+
+// ==============================================
 // 🔄 Update
 // ==============================================
-let dustTimer = 0;
-let blackHoleTimer = 0;
 let lastTime = performance.now();
 
 function update(dt) {
   state.time += dt;
+  state.hueShift = (state.hueShift + dt * 60) % 360;
 
-  // ---- Level progression (harder over time) ----
-  state.level = Math.floor(state.time / 15) + 1;
-  document.getElementById('level').textContent = state.level;
+  // ---- Speed increase over time ----
+  const targetSpeed = Math.min(
+    state.baseSpeed + state.time * 0.35,
+    state.maxSpeed
+  );
+  state.speed += (targetSpeed - state.speed) * dt * 2;
+  
+  document.getElementById('speed').textContent = state.speed.toFixed(1) + 'x';
 
-  const difficulty = 1 + (state.level - 1) * 0.25;
+  // ---- Distance & Score ----
+  state.distance += state.speed * dt * 60;
+  state.score = Math.floor(state.distance / 10) + coinsCollected * 50;
+  document.getElementById('score').textContent = state.score;
 
-  // ---- Player movement (smooth follow) ----
-  const followSpeed = 0.15;
-  player.x += (player.targetX - player.x) * followSpeed;
-  player.y += (player.targetY - player.y) * followSpeed;
+  // ---- Ball physics ----
+  ball.vy += ball.gravity;
+  ball.y += ball.vy;
+  ball.rotation += state.speed * dt * 8;
+  ball.colorHue = (state.hueShift + 180) % 360;
+
+  // Ground collision
+  if (ball.y + ball.radius >= GROUND_Y) {
+    if (!ball.isGrounded) {
+      spawnJumpParticles();
+    }
+    ball.y = GROUND_Y - ball.radius;
+    ball.vy = 0;
+    ball.isGrounded = true;
+  }
 
   // Trail
-  player.trail.push({ x: player.x, y: player.y, life: 1 });
-  if (player.trail.length > 20) player.trail.shift();
+  ball.trail.push({ x: ball.x, y: ball.y, life: 1 });
+  if (ball.trail.length > 15) ball.trail.shift();
+  ball.trail.forEach(t => t.life -= dt * 4);
+  ball.trail = ball.trail.filter(t => t.life > 0);
 
-  player.trail.forEach(t => t.life -= dt * 3);
-  player.trail = player.trail.filter(t => t.life > 0);
-
-  // ---- Spawn dust ----
-  dustTimer += dt;
-  const dustInterval = Math.max(0.15, 0.5 / difficulty);
-  if (dustTimer > dustInterval) {
-    dustTimer = 0;
-    spawnDust();
+  // ---- Spawn obstacles ----
+  obstacleTimer += dt;
+  const obstacleInterval = Math.max(0.55, 1.5 - state.time * 0.015);
+  if (obstacleTimer > obstacleInterval) {
+    obstacleTimer = 0;
+    spawnObstacle();
   }
 
-  // ---- Spawn black holes ----
-  blackHoleTimer += dt;
-  const bhInterval = Math.max(1.5, 4 - state.level * 0.2);
-  if (blackHoleTimer > bhInterval && blackHoles.length < 2 + Math.floor(state.level / 2)) {
-    blackHoleTimer = 0;
-    spawnBlackHole();
+  // ---- Spawn coins ----
+  coinTimer += dt;
+  if (coinTimer > 1.2) {
+    coinTimer = 0;
+    if (Math.random() < 0.6) spawnCoin();
   }
 
-  // ---- Update dust ----
-  const attractSpeed = 150 * difficulty;
-  for (let i = dustParticles.length - 1; i >= 0; i--) {
-    const d = dustParticles[i];
-    d.pulse += dt * 5;
+  // ---- Update obstacles ----
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    const ob = obstacles[i];
+    ob.x -= state.speed * dt * 60;
 
-    // Attract to player (magnetic field)
-    const dx = player.x - d.x;
-    const dy = player.y - d.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (dist < 200) {
-      const force = (1 - dist / 200) * attractSpeed;
-      d.vx += (dx / dist) * force * dt;
-      d.vy += (dy / dist) * force * dt;
+    // Score when passed
+    if (!ob.passed && ob.x + ob.width < ball.x) {
+      ob.passed = true;
+      state.score += 10;
     }
 
-    d.x += d.vx * dt;
-    d.y += d.vy * dt;
-    d.vx *= 0.96;
-    d.vy *= 0.96;
+    // Collision
+    if (checkCollision(ball, ob)) {
+      gameOver();
+      return;
+    }
+
+    if (ob.x + ob.width < -50) {
+      obstacles.splice(i, 1);
+    }
+  }
+
+  // ---- Update coins ----
+  for (let i = coins.length - 1; i >= 0; i--) {
+    const c = coins[i];
+    c.x -= state.speed * dt * 60;
+    c.pulse += dt * 5;
 
     // Collect
-    if (dist < player.radius + d.radius) {
-      state.score += 10;
-      document.getElementById('score').textContent = state.score;
-      spawnExplosion(d.x, d.y, d.hue);
-      dustParticles.splice(i, 1);
+    const dx = ball.x - c.x;
+    const dy = ball.y - c.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < ball.radius + c.radius + 5) {
+      coinsCollected++;
+      spawnCoinBurst(c.x, c.y, c.hue);
+      coins.splice(i, 1);
       continue;
     }
 
-    // Remove if too far
-    if (d.x < -100 || d.x > W + 100 || d.y < -100 || d.y > H + 100) {
-      dustParticles.splice(i, 1);
-    }
+    if (c.x < -30) coins.splice(i, 1);
   }
 
-  // ---- Update black holes ----
-  for (const bh of blackHoles) {
-    bh.rotation += dt * 2;
-    bh.pulse += dt * 3;
-
-    // Check collision
-    const dx = player.x - bh.x;
-    const dy = player.y - bh.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < bh.radius + player.radius * 0.7) {
-      gameOver();
-    }
-
-    // Attract dust to black hole (visual)
-    for (const d of dustParticles) {
-      const ddx = bh.x - d.x;
-      const ddy = bh.y - d.y;
-      const ddist = Math.sqrt(ddx * ddx + ddy * ddy);
-      if (ddist < 150 && ddist > 5) {
-        d.vx += (ddx / ddist) * 30 * dt;
-        d.vy += (ddy / ddist) * 30 * dt;
-      }
-    }
-  }
-
-  // ---- Update explosions ----
-  for (let i = explosionParticles.length - 1; i >= 0; i--) {
-    const p = explosionParticles[i];
+  // ---- Update particles ----
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
     p.x += p.vx * dt * 60;
     p.y += p.vy * dt * 60;
-    p.vx *= 0.92;
-    p.vy *= 0.92;
+    p.vy += 0.4;
+    p.vx *= 0.97;
     p.life -= dt * 2;
-    if (p.life <= 0) explosionParticles.splice(i, 1);
+    if (p.life <= 0) particles.splice(i, 1);
   }
 
-  // ---- Update background stars ----
+  // ---- Update stars ----
   for (const s of stars) {
-    s.y += s.speed * 30 * dt;
-    if (s.y > H) { s.y = -5; s.x = Math.random() * W; }
+    s.x -= s.speed * state.speed * 0.15 * dt * 60;
+    if (s.x < -5) {
+      s.x = W + 5;
+      s.y = Math.random() * H;
+    }
   }
 
-  // ---- Shake decay ----
+  // ---- Shake ----
   state.shakeAmount *= 0.9;
+}
+
+function checkCollision(ball, ob) {
+  // Circle vs rectangle
+  const closestX = Math.max(ob.x, Math.min(ball.x, ob.x + ob.width));
+  const closestY = Math.max(ob.y, Math.min(ball.y, ob.y + ob.height));
+  const dx = ball.x - closestX;
+  const dy = ball.y - closestY;
+  return dx * dx + dy * dy < (ball.radius * 0.85) ** 2;
 }
 
 // ==============================================
 // 🎨 Render
 // ==============================================
 function draw() {
-  // Background
-  ctx.fillStyle = 'rgba(0, 0, 8, 0.25)';
+  // Background gradient
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  const hue1 = state.hueShift;
+  bgGrad.addColorStop(0, `hsl(${hue1 + 240}, 70%, 8%)`);
+  bgGrad.addColorStop(0.6, `hsl(${hue1 + 280}, 80%, 6%)`);
+  bgGrad.addColorStop(1, `hsl(${hue1 + 320}, 90%, 4%)`);
+  ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, W, H);
 
   ctx.save();
@@ -308,139 +382,212 @@ function draw() {
   for (const s of stars) {
     ctx.globalAlpha = s.alpha;
     ctx.fillStyle = `hsl(${s.hue}, 100%, 75%)`;
+    ctx.shadowColor = `hsl(${s.hue}, 100%, 70%)`;
+    ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
-
-  // ---- Black holes (with gravitational lens look) ----
-  for (const bh of blackHoles) {
-    const pulseR = bh.radius + Math.sin(bh.pulse) * 3;
-
-    // Outer glow / accretion disk
-    const grad = ctx.createRadialGradient(bh.x, bh.y, pulseR * 0.5, bh.x, bh.y, pulseR * 3);
-    grad.addColorStop(0, 'rgba(120, 0, 200, 0.6)');
-    grad.addColorStop(0.4, 'rgba(80, 0, 150, 0.3)');
-    grad.addColorStop(1, 'rgba(40, 0, 80, 0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(bh.x, bh.y, pulseR * 3, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Rotating disk
-    ctx.save();
-    ctx.translate(bh.x, bh.y);
-    ctx.rotate(bh.rotation);
-    for (let i = 0; i < 3; i++) {
-      ctx.beginPath();
-      ctx.arc(0, 0, pulseR * 1.6, i * 2, i * 2 + 1);
-      ctx.strokeStyle = `hsla(${280 + i * 20}, 100%, 65%, 0.7)`;
-      ctx.lineWidth = 3;
-      ctx.shadowColor = `hsl(${280 + i * 20}, 100%, 60%)`;
-      ctx.shadowBlur = 15;
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // Core (black)
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.arc(bh.x, bh.y, pulseR, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Event horizon ring
-    ctx.strokeStyle = 'rgba(200, 100, 255, 0.9)';
-    ctx.lineWidth = 2;
-    ctx.shadowColor = '#c864ff';
-    ctx.shadowBlur = 20;
-    ctx.beginPath();
-    ctx.arc(bh.x, bh.y, pulseR + 1, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-  }
-
-  // ---- Dust particles ----
-  for (const d of dustParticles) {
-    const pulseSize = d.radius + Math.sin(d.pulse) * 1.5;
-
-    // Glow
-    const grad = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, pulseSize * 4);
-    grad.addColorStop(0, `hsla(${d.hue}, 100%, 80%, 1)`);
-    grad.addColorStop(0.3, `hsla(${d.hue}, 100%, 60%, 0.7)`);
-    grad.addColorStop(1, `hsla(${d.hue}, 100%, 50%, 0)`);
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(d.x, d.y, pulseSize * 4, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Core
-    ctx.fillStyle = `hsl(${d.hue}, 100%, 90%)`;
-    ctx.beginPath();
-    ctx.arc(d.x, d.y, pulseSize, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // ---- Player trail ----
-  for (let i = 0; i < player.trail.length; i++) {
-    const t = player.trail[i];
-    const alpha = t.life * 0.7;
-    const size = player.radius * (i / player.trail.length);
-    ctx.fillStyle = `rgba(180, 140, 255, ${alpha})`;
-    ctx.beginPath();
-    ctx.arc(t.x, t.y, size, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // ---- Player star ----
-  // Outer glow
-  const pGrad = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, player.radius * 5);
-  pGrad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-  pGrad.addColorStop(0.2, 'rgba(200, 160, 255, 0.9)');
-  pGrad.addColorStop(0.6, 'rgba(140, 90, 255, 0.4)');
-  pGrad.addColorStop(1, 'rgba(100, 50, 255, 0)');
-  ctx.fillStyle = pGrad;
-  ctx.beginPath();
-  ctx.arc(player.x, player.y, player.radius * 5, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Star core
-  ctx.fillStyle = '#fff';
-  ctx.shadowColor = '#c8a0ff';
-  ctx.shadowBlur = 30;
-  ctx.beginPath();
-  ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-  ctx.fill();
   ctx.shadowBlur = 0;
 
-  // Star rays
-  ctx.save();
-  ctx.translate(player.x, player.y);
-  ctx.rotate(state.time * 2);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-  ctx.lineWidth = 2;
-  for (let i = 0; i < 4; i++) {
-    ctx.rotate(Math.PI / 2);
+  // ---- Ground Line (Neon) ----
+  const groundHue = (state.hueShift + 180) % 360;
+  // Glow
+  ctx.shadowColor = `hsl(${groundHue}, 100%, 60%)`;
+  ctx.shadowBlur = 30;
+  ctx.strokeStyle = `hsl(${groundHue}, 100%, 65%)`;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND_Y);
+  ctx.lineTo(W, GROUND_Y);
+  ctx.stroke();
+
+  // Ground fill below
+  ctx.shadowBlur = 0;
+  const groundGrad = ctx.createLinearGradient(0, GROUND_Y, 0, H);
+  groundGrad.addColorStop(0, `hsla(${groundHue}, 100%, 50%, 0.25)`);
+  groundGrad.addColorStop(1, `hsla(${groundHue}, 100%, 30%, 0)`);
+  ctx.fillStyle = groundGrad;
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+
+  // Ground moving pattern
+  ctx.strokeStyle = `hsla(${groundHue}, 100%, 70%, 0.3)`;
+  ctx.lineWidth = 1;
+  const patternSpacing = 60;
+  const patternOffset = (state.distance * 1.0) % patternSpacing;
+  for (let i = -patternSpacing; i < W + patternSpacing; i += patternSpacing) {
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(player.radius * 2.5, 0);
+    ctx.moveTo(i - patternOffset, GROUND_Y);
+    ctx.lineTo(i - patternOffset, GROUND_Y + 30);
     ctx.stroke();
   }
-  ctx.restore();
 
-  // ---- Explosion particles ----
-  for (const p of explosionParticles) {
+  // ---- Obstacles ----
+  for (const ob of obstacles) {
+    ctx.shadowColor = `hsl(${ob.hue}, 100%, 60%)`;
+    ctx.shadowBlur = 25;
+
+    if (ob.type === 'spike' || ob.type === 'tallSpike') {
+      // Triangle spikes with gradient
+      const grad = ctx.createLinearGradient(ob.x, ob.y, ob.x, ob.y + ob.height);
+      grad.addColorStop(0, `hsl(${ob.hue}, 100%, 75%)`);
+      grad.addColorStop(1, `hsl(${ob.hue}, 100%, 45%)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(ob.x + ob.width / 2, ob.y);
+      ctx.lineTo(ob.x + ob.width, ob.y + ob.height);
+      ctx.lineTo(ob.x, ob.y + ob.height);
+      ctx.closePath();
+      ctx.fill();
+
+      // Inner bright core
+      ctx.fillStyle = `hsl(${ob.hue}, 100%, 90%)`;
+      ctx.beginPath();
+      ctx.moveTo(ob.x + ob.width / 2, ob.y + 5);
+      ctx.lineTo(ob.x + ob.width - 8, ob.y + ob.height - 3);
+      ctx.lineTo(ob.x + 8, ob.y + ob.height - 3);
+      ctx.closePath();
+      ctx.fill();
+    } else if (ob.type === 'block') {
+      const grad = ctx.createLinearGradient(ob.x, ob.y, ob.x + ob.width, ob.y + ob.height);
+      grad.addColorStop(0, `hsl(${ob.hue}, 100%, 70%)`);
+      grad.addColorStop(1, `hsl(${ob.hue}, 100%, 40%)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(ob.x, ob.y, ob.width, ob.height);
+
+      // Outline
+      ctx.strokeStyle = `hsl(${ob.hue}, 100%, 90%)`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(ob.x + 2, ob.y + 2, ob.width - 4, ob.height - 4);
+    } else if (ob.type === 'doubleSpike') {
+      const w = ob.width / 2;
+      for (let k = 0; k < 2; k++) {
+        const ox = ob.x + k * w;
+        const grad = ctx.createLinearGradient(ox, ob.y, ox, ob.y + ob.height);
+        grad.addColorStop(0, `hsl(${ob.hue}, 100%, 75%)`);
+        grad.addColorStop(1, `hsl(${ob.hue}, 100%, 45%)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(ox + w / 2, ob.y);
+        ctx.lineTo(ox + w, ob.y + ob.height);
+        ctx.lineTo(ox, ob.y + ob.height);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+  ctx.shadowBlur = 0;
+
+  // ---- Coins ----
+  for (const c of coins) {
+    const size = c.radius + Math.sin(c.pulse) * 2;
+
+    // Glow
+    const grad = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, size * 3);
+    grad.addColorStop(0, `hsla(${c.hue}, 100%, 75%, 1)`);
+    grad.addColorStop(0.4, `hsla(${c.hue}, 100%, 60%, 0.6)`);
+    grad.addColorStop(1, `hsla(${c.hue}, 100%, 50%, 0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, size * 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Core coin
+    ctx.fillStyle = `hsl(${c.hue}, 100%, 70%)`;
+    ctx.shadowColor = `hsl(${c.hue}, 100%, 60%)`;
+    ctx.shadowBlur = 20;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, size, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner symbol
+    ctx.fillStyle = `hsl(${c.hue}, 100%, 95%)`;
+    ctx.shadowBlur = 0;
+    ctx.font = `bold ${size * 1.4}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('★', c.x, c.y + 1);
+  }
+
+  // ---- Particles ----
+  for (const p of particles) {
     ctx.globalAlpha = p.life;
-    ctx.fillStyle = `hsl(${p.hue}, 100%, 70%)`;
+    ctx.fillStyle = `hsl(${p.hue}, 100%, 65%)`;
     ctx.shadowColor = `hsl(${p.hue}, 100%, 60%)`;
-    ctx.shadowBlur = 15;
+    ctx.shadowBlur = 12;
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
   ctx.shadowBlur = 0;
+
+  // ---- Ball trail ----
+  for (let i = 0; i < ball.trail.length; i++) {
+    const t = ball.trail[i];
+    const alpha = t.life * 0.6;
+    const size = ball.radius * (i / ball.trail.length) * 0.8;
+    ctx.fillStyle = `hsla(${ball.colorHue}, 100%, 60%, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ---- Ball ----
+  // Outer glow
+  const bGrad = ctx.createRadialGradient(ball.x, ball.y, 0, ball.x, ball.y, ball.radius * 2.5);
+  bGrad.addColorStop(0, `hsla(${ball.colorHue}, 100%, 75%, 1)`);
+  bGrad.addColorStop(0.5, `hsla(${ball.colorHue}, 100%, 55%, 0.6)`);
+  bGrad.addColorStop(1, `hsla(${ball.colorHue}, 100%, 50%, 0)`);
+  ctx.fillStyle = bGrad;
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.radius * 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ball main gradient
+  const ballGrad = ctx.createRadialGradient(
+    ball.x - ball.radius * 0.3,
+    ball.y - ball.radius * 0.3,
+    2,
+    ball.x,
+    ball.y,
+    ball.radius
+  );
+  ballGrad.addColorStop(0, `hsl(${ball.colorHue}, 100%, 95%)`);
+  ballGrad.addColorStop(0.5, `hsl(${ball.colorHue}, 100%, 65%)`);
+  ballGrad.addColorStop(1, `hsl(${ball.colorHue}, 100%, 45%)`);
+
+  ctx.fillStyle = ballGrad;
+  ctx.shadowColor = `hsl(${ball.colorHue}, 100%, 60%)`;
+  ctx.shadowBlur = 25;
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Ball pattern (rotating)
+  ctx.save();
+  ctx.translate(ball.x, ball.y);
+  ctx.rotate(ball.rotation);
+  ctx.strokeStyle = `hsla(${ball.colorHue}, 100%, 20%, 0.6)`;
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 2; i++) {
+    ctx.beginPath();
+    ctx.arc(0, 0, ball.radius * (0.4 + i * 0.3), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(-ball.radius, 0);
+  ctx.lineTo(ball.radius, 0);
+  ctx.stroke();
+  ctx.restore();
+
+  // Highlight
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+  ctx.beginPath();
+  ctx.arc(ball.x - ball.radius * 0.35, ball.y - ball.radius * 0.35, ball.radius * 0.25, 0, Math.PI * 2);
+  ctx.fill();
 
   ctx.restore();
 }
@@ -452,9 +599,7 @@ function loop(now) {
   const dt = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
 
-  if (state.running) {
-    update(dt);
-  }
+  if (state.running) update(dt);
   draw();
 
   requestAnimationFrame(loop);
@@ -467,24 +612,22 @@ function startGame() {
   state.running = true;
   state.score = 0;
   state.time = 0;
-  state.level = 1;
+  state.distance = 0;
+  state.speed = state.baseSpeed;
   state.shakeAmount = 0;
 
-  player.x = W / 2;
-  player.y = H / 2;
-  player.targetX = W / 2;
-  player.targetY = H / 2;
-  player.trail = [];
+  obstacles = [];
+  coins = [];
+  particles = [];
+  obstacleTimer = 0;
+  coinTimer = 0;
+  coinsCollected = 0;
 
-  dustParticles = [];
-  explosionParticles = [];
-  blackHoles = [];
-
-  dustTimer = 0;
-  blackHoleTimer = 0;
+  resetBall();
+  initStars();
 
   document.getElementById('score').textContent = '0';
-  document.getElementById('level').textContent = '1';
+  document.getElementById('speed').textContent = '1x';
   document.getElementById('highScore').textContent = state.highScore;
 
   document.getElementById('startScreen').classList.add('hidden');
@@ -493,22 +636,24 @@ function startGame() {
 
 function gameOver() {
   state.running = false;
-  state.shakeAmount = 30;
+  state.shakeAmount = 40;
+
+  spawnExplosion(ball.x, ball.y);
 
   if (state.score > state.highScore) {
     state.highScore = state.score;
-    localStorage.setItem('stardust_high', state.highScore);
+    localStorage.setItem('crazyball_high', state.highScore);
   }
 
   document.getElementById('finalScore').textContent = state.score;
   document.getElementById('finalHighScore').textContent = state.highScore;
-  document.getElementById('finalLevel').textContent = state.level;
-  document.getElementById('gameOverScreen').classList.remove('hidden');
+  document.getElementById('finalSpeed').textContent = state.speed.toFixed(1) + 'x';
+
+  setTimeout(() => {
+    document.getElementById('gameOverScreen').classList.remove('hidden');
+  }, 600);
 }
 
-// ==============================================
-// 🎯 Buttons
-// ==============================================
 document.getElementById('startBtn').addEventListener('click', startGame);
 document.getElementById('restartBtn').addEventListener('click', startGame);
 
